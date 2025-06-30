@@ -7,7 +7,7 @@ async function fetchBTCPrices() {
   const from = Math.floor(new Date('2014-01-01').getTime() / 1000);
   const to = Math.floor(Date.now() / 1000);
   const targetURL = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from=${from}&to=${to}`;
-  const proxyURL = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetURL)}`;
+  const proxyURL = `https://corsproxy.io/?${encodeURIComponent(targetURL)}`;
 
   try {
     console.log("🔄 Fetching via CORS proxy...");
