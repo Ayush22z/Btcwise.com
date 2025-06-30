@@ -1,33 +1,51 @@
 let btcPrices = [];
-let fxRateINR = 83; // INR to USD (can be updated via API later)
+let fxRateINR = 86; // Static INR to USD rate (can be made dynamic later)
+const calculateBtn = document.querySelector("button");
+calculateBtn.disabled = true; // Disable until BTC prices are fetched
 
-// Fetch BTC monthly prices from CoinGecko and aggregate monthly averages
 async function fetchBTCPrices() {
-  const from = Math.floor(new Date('2014-01-01').getTime() / 1000);
-  const to = Math.floor(Date.now() / 1000);
-  const url = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from=${from}&to=${to}`;
+  try {
+    const from = Math.floor(new Date('2014-01-01').getTime() / 1000);
+    const to = Math.floor(Date.now() / 1000);
+    const url = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from=${from}&to=${to}`;
 
-  const res = await fetch(url);
-  const data = await res.json();
-  const dailyPrices = data.prices;
+    const res = await fetch(url, {
+      headers: {
+        'accept': 'application/json'
+      }
+    });
 
-  const grouped = {};
-  dailyPrices.forEach(([ts, price]) => {
-    const date = new Date(ts);
-    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-    if (!grouped[key]) grouped[key] = [];
-    grouped[key].push(price);
-  });
+    if (!res.ok) {
+      throw new Error(`Fetch failed with status: ${res.status}`);
+    }
 
-  btcPrices = Object.entries(grouped).map(([month, prices]) => ({
-    month,
-    price: prices.reduce((a, b) => a + b) / prices.length
-  }));
+    const data = await res.json();
+    const dailyPrices = data.prices;
+
+    const grouped = {};
+    dailyPrices.forEach(([ts, price]) => {
+      const date = new Date(ts);
+      const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(price);
+    });
+
+    btcPrices = Object.entries(grouped).map(([month, prices]) => ({
+      month,
+      price: prices.reduce((a, b) => a + b) / prices.length
+    }));
+
+    console.log("✅ BTC monthly price data loaded:", btcPrices);
+    calculateBtn.disabled = false;
+  } catch (error) {
+    console.error("❌ Failed to load BTC price data:", error);
+    alert("Unable to fetch BTC price data. Please try again later.");
+  }
 }
 
 async function calculateSIP() {
   if (btcPrices.length === 0) {
-    alert("Loading BTC price data. Please wait a moment.");
+    alert("⚠️ BTC data is still loading. Please wait a few seconds.");
     return;
   }
 
@@ -37,7 +55,7 @@ async function calculateSIP() {
   const usd = inr / fxRateINR;
 
   if (btcPrices.length < months) {
-    alert("Not enough data. Try a shorter duration.");
+    alert("Not enough BTC history. Try a shorter duration.");
     return;
   }
 
@@ -49,8 +67,8 @@ async function calculateSIP() {
     const btcBought = usd / btcPrice;
     btcTotal += btcBought;
 
-    const currentValueINR = btcTotal * btcPrices[btcPrices.length - 1].price * fxRateINR;
-    dataPoints.push(Math.round(currentValueINR));
+    const valueINR = btcTotal * btcPrices[btcPrices.length - 1].price * fxRateINR;
+    dataPoints.push(Math.round(valueINR));
   }
 
   const invested = inr * months;
@@ -92,4 +110,5 @@ function drawChart(data) {
   });
 }
 
+// Start fetching BTC prices on load
 fetchBTCPrices();
