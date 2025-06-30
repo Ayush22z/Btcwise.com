@@ -1,30 +1,64 @@
-// Placeholder CAGR data
-const CAGR = {
-  btc: 0.72, // 72%
-  eth: 0.85  // 85%
-};
+let btcPrices = [];
+let fxRateINR = 83; // INR to USD (can be updated via API later)
 
-function calculateSIP() {
-  const amount = parseFloat(document.getElementById('sipAmount').value);
-  const years = parseInt(document.getElementById('durationYears').value);
-  const coin = document.getElementById('coin').value;
-  const months = years * 12;
-  const rate = CAGR[coin] / 12; // Monthly CAGR estimate
+// Fetch BTC monthly prices from CoinGecko and aggregate monthly averages
+async function fetchBTCPrices() {
+  const from = Math.floor(new Date('2014-01-01').getTime() / 1000);
+  const to = Math.floor(Date.now() / 1000);
+  const url = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from=${from}&to=${to}`;
 
-  let futureValue = 0;
-  let dataPoints = [];
-  for (let i = 1; i <= months; i++) {
-    futureValue = (futureValue + amount) * (1 + rate);
-    dataPoints.push(Math.round(futureValue));
+  const res = await fetch(url);
+  const data = await res.json();
+  const dailyPrices = data.prices;
+
+  const grouped = {};
+  dailyPrices.forEach(([ts, price]) => {
+    const date = new Date(ts);
+    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(price);
+  });
+
+  btcPrices = Object.entries(grouped).map(([month, prices]) => ({
+    month,
+    price: prices.reduce((a, b) => a + b) / prices.length
+  }));
+}
+
+async function calculateSIP() {
+  if (btcPrices.length === 0) {
+    alert("Loading BTC price data. Please wait a moment.");
+    return;
   }
 
-  const invested = amount * months;
+  const inr = parseFloat(document.getElementById('sipAmount').value);
+  const years = parseInt(document.getElementById('durationYears').value);
+  const months = years * 12;
+  const usd = inr / fxRateINR;
 
-  // Show result
+  if (btcPrices.length < months) {
+    alert("Not enough data. Try a shorter duration.");
+    return;
+  }
+
+  let btcTotal = 0;
+  const dataPoints = [];
+
+  for (let i = 0; i < months; i++) {
+    const btcPrice = btcPrices[i].price;
+    const btcBought = usd / btcPrice;
+    btcTotal += btcBought;
+
+    const currentValueINR = btcTotal * btcPrices[btcPrices.length - 1].price * fxRateINR;
+    dataPoints.push(Math.round(currentValueINR));
+  }
+
+  const invested = inr * months;
+  const finalValue = btcTotal * btcPrices[btcPrices.length - 1].price * fxRateINR;
+
   document.getElementById('invested').textContent = invested.toLocaleString();
-  document.getElementById('finalValue').textContent = futureValue.toLocaleString();
+  document.getElementById('finalValue').textContent = Math.round(finalValue).toLocaleString();
 
-  // Draw chart
   drawChart(dataPoints);
 }
 
@@ -38,7 +72,7 @@ function drawChart(data) {
     data: {
       labels: data.map((_, i) => `Month ${i + 1}`),
       datasets: [{
-        label: 'SIP Value',
+        label: 'SIP Portfolio Value (₹)',
         data: data,
         borderColor: '#4f46e5',
         fill: false,
@@ -57,3 +91,5 @@ function drawChart(data) {
     }
   });
 }
+
+fetchBTCPrices();
