@@ -10,38 +10,35 @@ async function fetchBTCPrices() {
   const proxyURL = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetURL)}`;
 
   try {
-    console.log("🔄 Fetching BTC data from CoinGecko via proxy...");
+    console.log("🔄 Fetching via CORS proxy...");
     const res = await fetch(proxyURL);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
     const data = await res.json();
-    const dailyPrices = data.prices;
 
     const grouped = {};
-    dailyPrices.forEach(([ts, price]) => {
-      const date = new Date(ts);
-      const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-      if (!grouped[key]) grouped[key] = [];
+    data.prices.forEach(([ts, price]) => {
+      const d = new Date(ts);
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+      grouped[key] = grouped[key] || [];
       grouped[key].push(price);
     });
 
-    btcPrices = Object.entries(grouped).map(([month, prices]) => ({
-      month,
-      price: prices.reduce((a, b) => a + b) / prices.length
+    btcPrices = Object.entries(grouped).map(([m, arr]) => ({
+      month: m,
+      price: arr.reduce((a,b)=>a+b)/arr.length
     }));
 
-    console.log("✅ BTC monthly prices loaded:", btcPrices.length, "months");
+    console.log("✅ Loaded", btcPrices.length, "months of data");
     calculateBtn.disabled = false;
   } catch (err) {
-    console.error("❌ Failed to fetch BTC prices:", err);
+    console.error("❌ Fetch error:", err);
     alert("Unable to fetch BTC price data. Please try again later.");
   }
 }
 
-async function calculateSIP() {
-  if (btcPrices.length === 0) {
-    alert("BTC price data not ready. Please wait.");
-    return;
+function calculateSIP() {
+  if (!btcPrices.length) {
+    return alert("BTC data is still loading...");
   }
 
   const inr = parseFloat(document.getElementById('sipAmount').value);
@@ -50,27 +47,17 @@ async function calculateSIP() {
   const usd = inr / fxRateINR;
 
   if (btcPrices.length < months) {
-    alert("Insufficient BTC data for the selected duration.");
-    return;
+    return alert("Not enough historical data. Pick shorter duration.");
   }
 
-  let btcTotal = 0;
-  const dataPoints = [];
-
+  let btcTotal = 0, dataPoints = [];
   for (let i = 0; i < months; i++) {
-    const btcPrice = btcPrices[i].price;
-    const btcBought = usd / btcPrice;
-    btcTotal += btcBought;
-
-    const currentValueINR = btcTotal * btcPrices[btcPrices.length - 1].price * fxRateINR;
-    dataPoints.push(Math.round(currentValueINR));
+    btcTotal += usd / btcPrices[i].price;
+    dataPoints.push(Math.round(btcTotal * btcPrices[btcPrices.length-1].price * fxRateINR));
   }
 
-  const invested = inr * months;
-  const finalValue = btcTotal * btcPrices[btcPrices.length - 1].price * fxRateINR;
-
-  document.getElementById('invested').textContent = invested.toLocaleString();
-  document.getElementById('finalValue').textContent = Math.round(finalValue).toLocaleString();
+  document.getElementById('invested').textContent = (inr * months).toLocaleString();
+  document.getElementById('finalValue').textContent = Math.round(btcTotal * btcPrices[btcPrices.length-1].price * fxRateINR).toLocaleString();
 
   drawChart(dataPoints);
 }
@@ -83,26 +70,16 @@ function drawChart(data) {
   chart = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: data.map((_, i) => `Month ${i + 1}`),
-      datasets: [{
-        label: 'SIP Portfolio Value (₹)',
-        data: data,
-        borderColor: '#4f46e5',
-        fill: false,
-        tension: 0.3
-      }]
+      labels: data.map((_, i) => `M${i+1}`),
+      datasets: [{ label: 'Value (₹)', data, borderColor: '#4f46e5', fill: false, tension: 0.3 }]
     },
     options: {
-      responsive: true,
       scales: {
-        y: {
-          ticks: {
-            callback: (value) => '₹' + value.toLocaleString()
-          }
-        }
+        y: { ticks: { callback: v => '₹' + v.toLocaleString() } }
       }
     }
   });
 }
 
+document.querySelector("button").addEventListener("click", calculateSIP);
 fetchBTCPrices();
